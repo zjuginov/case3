@@ -1,0 +1,106 @@
+---
+- hosts: all 
+  become: true
+  vars_files:
+          - vars/vars.yml
+
+  tasks:
+
+    - name: Create user
+      user:        
+        name: "{{ user }}" 
+        password: "{{ pass }}" 
+        groups: sudo, www-data
+        state: present
+        shell: /bin/bash
+        createhome: yes
+        home: /home/{{ user }}       
+   
+    - name: Update repositories
+      apt: name=aptitude update_cache=yes state=latest force_apt_get=yes
+
+    - name: Install Apache
+      apt: name=apache2 update_cache=yes state=latest
+
+    - apache2_module:
+        state: present
+        name: ssl
+      notify: Restart Apache
+
+    - name: Create website folder
+      file:
+        path: "/var/www/{{ item }}"
+        state: directory
+        owner: "{{ user }}"
+        group: www-data
+        mode: '0755'
+      loop: "{{ vhosts }}"
+
+    - name: Create website index page
+      template:
+        src: "files/index.html.j2"
+        dest: "/var/www/{{ item }}/index.html"
+        owner: "{{ user }}"
+        group: www-data
+      loop: "{{ vhosts }}"
+
+    - name: Create http virtualhost
+      template:
+        src: "files/apache.conf.j2"
+        dest: "/etc/apache2/sites-available/{{ item }}.conf"
+        owner: "{{ user }}"
+        group: www-data
+      loop: "{{ vhosts }}"
+
+    - name: Create https virtualhost
+      template:
+        src: "files/ssl-apache.conf.j2"
+        dest: "/etc/apache2/sites-available/ssl-{{ https_vhost }}.conf"
+        owner: "{{ user }}"
+        group: www-data
+
+    - name: Create SSL certificate for virtualhost 
+      shell: /usr/bin/openssl req -newkey rsa:4096 -x509 -sha256 -days 365 -nodes -out /etc/ssl/certs/{{ https_vhost }}.crt -keyout /etc/ssl/private/{{ https_vhost}}.key -subj "/C=HR/L=Split/O=test/CN=site3.local"
+
+    - name: Change private key group and permissions
+      file:
+        path: /etc/ssl/private/{{ https_vhost }}.key
+        mode: '0640'
+        group: ssl-cert
+
+    - name: Enable http website
+      shell: /usr/sbin/a2ensite {{ item }}.conf 
+      notify: Reload Apache
+      loop: "{{ vhosts }}"
+
+    - name: Enable https website
+      shell: /usr/sbin/a2ensite ssl-{{ https_vhost }}.conf 
+      notify: Reload Apache
+
+    - name: Disable default http Apache website
+      shell: /usr/sbin/a2dissite 000-default.conf
+      when: disable_default
+      notify: Reload Apache
+
+    - name: Disable default https Apache website
+      shell: /usr/sbin/a2dissite default-ssl.conf
+      when: disable_default
+      notify: Reload Apache
+
+    - name: Enable http/https ports
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop: "{{allow_ports}}"  
+
+  handlers:
+    - name: Reload Apache
+      service:
+        name: apache2
+        state: reloaded
+
+    - name: Restart Apache
+      service:
+        name: apache2
+        state: restarted

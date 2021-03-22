@@ -1,0 +1,8 @@
+---
+user: "webguy"
+pass: $6$lxCzBS4gWJUKsJbr$vPKnpkYCdD0zOaCnI0.jkP61ekEnShQeQ44lh1UIj5DAo8.HrnosjDu1G32pcHincJc5joR9iEUiGT7rBFJAk0
+vhosts: [ 'site1.local', 'site2.local', 'site3.local' ] 
+http_vhost: [ 'site1.local', 'site2.local' ] 
+https_vhost: "site3.local"
+disable_default: true
+allow_ports: [ '80', '443' ]
